@@ -3,41 +3,35 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DXF → GLB con Extrusión + Visor</title>
+<title>DXF → GLB</title>
 <meta name="color-scheme" content="light dark">
-<style>
-  :root{--bg:#0b0f19; --fg:#e5e7eb; --panel:#111827; --muted:#94a3b8; --border:#1f2937; --accent:#22d3ee}
-  *{box-sizing:border-box}
-  html,body{height:100%;margin:0}
-  body{display:grid; grid-template-rows:auto 1fr; background:var(--bg); color:var(--fg); font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
-  header{padding:10px 14px; border-bottom:1px solid var(--border); background:#0b0f19}
-  .wrap{display:grid; grid-template-columns: 420px 1fr; gap:14px; padding:14px; height:calc(100vh - 54px)}
-  aside{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px; overflow:auto}
-  main{background:#0b1222; border:1px solid var(--border); border-radius:14px; overflow:hidden; display:grid}
-  h1{font-size:18px; margin:0}
-  h2{font-size:14px; margin:12px 0 6px}
-  .muted{color:var(--muted); font-size:13px}
-  .row{display:flex; gap:10px; align-items:center; margin:8px 0; flex-wrap:wrap}
-  input[type="file"], select, input[type="number"]{background:#0f172a; border:1px solid var(--border); padding:8px 10px; border-radius:10px; color:var(--fg)}
-  input[type="checkbox"]{transform:scale(1.05)}
-  .btn{display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:#0ea5e9; color:#fff; font-weight:700; cursor:pointer}
-  .btn:disabled{opacity:.6; cursor:not-allowed}
-  .chip{display:inline-block; padding:4px 10px; border:1px solid var(--border); border-radius:999px; font-size:12px; color:var(--muted)}
-  #log{white-space:pre-wrap; font-family:ui-monospace,Menlo,Consolas; background:#0b1222; padding:10px; border-radius:10px; border:1px solid var(--border); height:150px; overflow:auto}
-  model-viewer{width:100%; height:100%; background:#0b1222}
-  .note{font-size:12px; color:#f59e0b}
-</style>
+
 <!-- Visor GLB (requiere internet) -->
 <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+<script type="importmap">
+    {
+      "imports": {
+        "three": "./libs/three/three.module.min.js"
+      }
+    }
+    </script>
+
+
+<link rel="stylesheet" href="assets/css/app.css">
 </head>
 <body>
-  <header><h1>DXF → GLB con Extrusión + Visor</h1></header>
+  <header><button id="toggleAside" class="btn btn-ghost" aria-label="Mostrar panel" aria-expanded="false" aria-controls="sidebar">☰ Panel</button><img src="img/logo26px.png" alt="logo" class="app-logo" /> <h1>DXF → GLB con Extrusión + Visor</h1></header>
   <div class="wrap">
-    <aside>
+    <aside id="sidebar">
       <h2>1) Archivo</h2>
       <div class="row">
-        <input id="file" type="file" accept=".dxf">
-      </div>
+        <div class="row" id="preTypeGroup" style="gap:16px; margin:8px 0;">
+      <strong style="font-size:13px;">Clasificar antes de importar:</strong>
+      <label><input type="radio" name="preType" value="tajos"> Tajos</label>
+      <label><input type="radio" name="preType" value="avances"> Avances</label>
+      <label><input type="radio" name="preType" value="proyecto"> Proyecto</label>
+    </div>
+<input id="file" type="file" accept=".dxf" disabled></div>
       <div class="row">
         <label class="muted">Unidades:
           <select id="units">
@@ -79,463 +73,43 @@
       <p class="muted">La conversión funciona sin Internet. El <strong>visor</strong> requiere conexión para cargar el componente web.</p>
     </aside>
     <main>
-      <model-viewer id="viewer" camera-controls auto-rotate environment-image="neutral" shadow-intensity="1"></model-viewer>
+      <model-viewer id="viewer" camera-controls auto-rotate environment-image="neutral" shadow-intensity="1">
+<div id="advancedViewer">
+  <canvas id="advCanvas"></canvas>
+</div>
+
+<div id="viewerOverlay">
+  <label style="color:#e6e9ef; font-size:12px;">
+    Vista:
+    <select id="viewPreset" style="margin-left:6px; padding:4px 6px; border-radius:6px; border:1px solid #2a2f3a; background:#0c1118; color:#e6e9ef;">
+      <option value="iso">Isométrica</option>
+      <option value="top">Superior</option>
+      <option value="front">Frontal</option>
+      <option value="right">Derecha</option>
+    </select>
+  </label>
+  <label style="color:#e6e9ef; font-size:12px; margin-left:8px;">
+    Sección:
+    <input type="checkbox" id="sectionMode" />
+  </label>
+  <label style="color:#e6e9ef; font-size:12px; display:none;" id="sectionControls">
+    Eje:
+    <select id="sectionAxis" style="margin:0 6px; padding:4px 6px; border-radius:6px; border:1px solid #2a2f3a; background:#0c1118; color:#e6e9ef;">
+      <option value="x">X</option>
+      <option value="y">Y</option>
+      <option value="z" selected>Z</option>
+    </select>
+    Corte: <input type="range" id="sectionPos" min="-10" max="10" value="0" step="0.1" style="vertical-align:middle; width:140px;">
+    <button id="exitSection" class="btn" style="margin-left:6px;">Volver visor</button>
+  </label>
+</div>
+</model-viewer>
     </main>
   </div>
 
-<script>
-const $ = sel => document.querySelector(sel);
-const fileInput = $('#file');
-const convertBtn = $('#convert');
-const downloadBtn = $('#download');
-const unitsSel = $('#units');
-const inclLinesEl = $('#inclLines');
-const extrudePolysEl = $('#extrudePolys');
-const extrudeLinesEl = $('#extrudeLines');
-const depthEl = $('#depth');
-const lineWEl = $('#lineW');
-const logEl = $('#log'), unitsChip = $('#unitsChip'), facesChip = $('#facesChip'), linesChip = $('#linesChip');
-const viewer = $('#viewer');
 
-let lastDXFText = null;
-let lastGLBBlobUrl = null;
+<script type="module" src="assets/js/app.js"></script>
 
-fileInput.addEventListener('change', async (e)=>{
-  const f = e.target.files[0];
-  if(!f){ convertBtn.disabled = true; return; }
-  try {
-    lastDXFText = await f.text();
-    convertBtn.disabled = false;
-    log('DXF listo: ' + f.name);
-  } catch (err) {
-    log('No se pudo leer el archivo: ' + err.message);
-  }
-});
-
-convertBtn.addEventListener('click', async ()=>{
-  if(!lastDXFText){ log('Selecciona un DXF.'); return; }
-  try {
-    const opts = {
-      unitMode: unitsSel.value,
-      includeLines: inclLinesEl.checked,
-      extrudePolys: extrudePolysEl.checked,
-      extrudeLines: extrudeLinesEl.checked,
-      depth: Math.max(0.0001, parseFloat(depthEl.value)||0.1),
-      lineWidth: Math.max(0.0001, parseFloat(lineWEl.value)||0.02)
-    };
-    const result = parseAndBuild(lastDXFText, opts);
-    unitsChip.textContent = 'Unidad: ' + result.scaleApplied.toFixed(6) + ' m/u';
-    facesChip.textContent = 'Caras: ' + result.triangles.length;
-    linesChip.textContent = 'Líneas: ' + result.segments.length;
-
-    const blob = buildGLB(result.triangles, opts.includeLines ? result.segments : []);
-    downloadBtn.disabled = false;
-    downloadBtn.onclick = ()=> download(blob, 'model.glb');
-    // Mostrar en visor
-    if (lastGLBBlobUrl) URL.revokeObjectURL(lastGLBBlobUrl);
-    lastGLBBlobUrl = URL.createObjectURL(blob);
-    try {
-      viewer.src = lastGLBBlobUrl;
-      log('GLB cargado en visor.');
-    } catch (e) {
-      log('No se pudo cargar en el visor (¿sin internet?).');
-    }
-  } catch (err) {
-    console.error(err);
-    log('Error: ' + err.message);
-  }
-});
-
-function log(msg){ logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; }
-
-function parseAndBuild(text, {unitMode, includeLines, extrudePolys, extrudeLines, depth, lineWidth}){
-  const lines = text.split(/\r?\n/);
-  function getScaleFromUnits(mode, ins){
-    if(mode !== 'auto'){
-      if(mode==='mm') return 0.001;
-      if(mode==='cm') return 0.01;
-      if(mode==='m')  return 1.0;
-      if(mode==='in') return 0.0254;
-      if(mode==='ft') return 0.3048;
-    }
-    const lut = {0:1.0,1:0.0254,2:0.3048,3:0.9144,4:0.001,5:0.01,6:1.0,7:1000.0,9:0.0000254,10:1.0};
-    if(ins != null && (ins in lut)) return lut[ins];
-    return 0.001; // default mm->m
-  }
-
-  // Find INSUNITS
-  let insunits = null;
-  for(let i=0;i<lines.length-1;i+=2){
-    const c = lines[i].trim(), v = lines[i+1].trim();
-    if(c==='0' && v==='SECTION' && i+4<lines.length && lines[i+2].trim()==='2' && lines[i+3].trim()==='HEADER'){
-      for(let j=i+4;j<lines.length-1;j+=2){
-        const cc = lines[j].trim(), vv = lines[j+1].trim();
-        if(cc==='0' && vv==='ENDSEC') { i=j; break; }
-        if(cc==='9' && vv==='$INSUNITS'){
-          if(j+4<lines.length && lines[j+2].trim()==='70'){
-            const n = parseInt(lines[j+3].trim(), 10);
-            if(!isNaN(n)) insunits = n;
-          }
-        }
-      }
-    }
-  }
-  const scale = getScaleFromUnits(unitMode, insunits);
-
-  // Parse entities
-  const triangles = []; // [[x,y,z], [x,y,z], [x,y,z]]
-  const segments  = []; // [[x,y,z], [x,y,z]]
-  const polylines = []; // {verts:[[x,y,z]...], closed:bool}
-  let inEnt = false;
-  for(let i=0;i<lines.length-1;i+=2){
-    const c = lines[i].trim(), v = lines[i+1].trim();
-    if(c==='0' && v==='SECTION'){
-      if(i+4<lines.length && lines[i+2].trim()==='2' && lines[i+3].trim()==='ENTITIES'){ inEnt = true; i += 2; continue; }
-    }
-    if(c==='0' && v==='ENDSEC'){ inEnt = false; continue; }
-    if(!inEnt) continue;
-
-    if(c==='0' && v==='3DFACE'){
-      let x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4;
-      for(let j=i+2;j<lines.length-1;j+=2){
-        const cc=lines[j].trim(), vv=lines[j+1].trim();
-        if(cc==='0') { i=j-2; break; }
-        if(cc==='10') x1=parseFloat(vv);
-        else if(cc==='20') y1=parseFloat(vv);
-        else if(cc==='30') z1=parseFloat(vv);
-        else if(cc==='11') x2=parseFloat(vv);
-        else if(cc==='21') y2=parseFloat(vv);
-        else if(cc==='31') z2=parseFloat(vv);
-        else if(cc==='12') x3=parseFloat(vv);
-        else if(cc==='22') y3=parseFloat(vv);
-        else if(cc==='32') z3=parseFloat(vv);
-        else if(cc==='13') x4=parseFloat(vv);
-        else if(cc==='23') y4=parseFloat(vv);
-        else if(cc==='33') z4=parseFloat(vv);
-      }
-      if([x1,y1,z1,x2,y2,z2,x3,y3,z3].every(n => typeof n === 'number')){
-        const v0=[x1*scale,y1*scale,z1*scale], v1=[x2*scale,y2*scale,z2*scale], v2=[x3*scale,y3*scale,z3*scale];
-        if([x4,y4,z4].every(n => typeof n === 'number')){
-          const v3=[x4*scale,y4*scale,z4*scale];
-          const same = (Math.abs(v3[0]-v2[0])<1e-9 && Math.abs(v3[1]-v2[1])<1e-9 && Math.abs(v3[2]-v2[2])<1e-9);
-          if(same){ triangles.push(v0,v1,v2); }
-          else { triangles.push(v0,v1,v2, v0,v2,v3); }
-        } else {
-          triangles.push(v0,v1,v2);
-        }
-      }
-      continue;
-    }
-
-    if(c==='0' && v==='LINE'){
-      let x1=0,y1=0,z1=0,x2=0,y2=0,z2=0, j=i+2;
-      for(;j<lines.length-1;j+=2){
-        const cc=lines[j].trim(), vv=lines[j+1].trim();
-        if(cc==='0') { i=j-2; break; }
-        if(cc==='10') x1=parseFloat(vv);
-        else if(cc==='20') y1=parseFloat(vv);
-        else if(cc==='30') z1=parseFloat(vv);
-        else if(cc==='11') x2=parseFloat(vv);
-        else if(cc==='21') y2=parseFloat(vv);
-        else if(cc==='31') z2=parseFloat(vv);
-      }
-      const a=[x1*scale,y1*scale,z1*scale], b=[x2*scale,y2*scale,z2*scale];
-      segments.push([a,b]);
-      continue;
-    }
-
-    if(c==='0' && (v==='LWPOLYLINE' || v==='POLYLINE')){
-      const verts=[]; let closed=false;
-      for(let j=i+2;j<lines.length-1;j+=2){
-        const cc=lines[j].trim(), vv=lines[j+1].trim();
-        if(cc==='0') { i=j-2; break; }
-        if(cc==='10'){
-          const x=parseFloat(vv);
-          if(j+2<lines.length && lines[j+2].trim()==='20'){
-            const y=parseFloat(lines[j+3].trim());
-            verts.push([x*scale,y*scale,0]); j+=2;
-          }
-        }
-        if(cc==='70'){
-          const n=parseInt(vv,10);
-          if(!Number.isNaN(n)) closed = !!(n & 1);
-        }
-      }
-      polylines.push({verts, closed});
-      continue;
-    }
-  }
-
-  // Extruir polilíneas cerradas
-  if(extrudePolys){
-    let extruded = 0;
-    for(const P of polylines){
-      const vs = P.verts;
-      if(!(P.closed && vs.length>=3)) continue;
-      const tris = triangulatePolygon2D(vs);
-      if(tris.length < 1) continue;
-      // Build bottom/top + sides
-      const z0 = 0, z1 = depth;
-      // faces (top & bottom)
-      for(const t of tris){
-        const a=vs[t[0]], b=vs[t[1]], c=vs[t[2]];
-        // bottom (CW to face -Z)
-        triangles.push([a[0],a[1],z0],[c[0],c[1],z0],[b[0],b[1],z0]);
-        // top (CCW to face +Z)
-        triangles.push([a[0],a[1],z1],[b[0],b[1],z1],[c[0],c[1],z1]);
-      }
-      // sides
-      for(let i=0;i<vs.length;i++){
-        const j=(i+1)%vs.length;
-        const A=vs[i], B=vs[j];
-        triangles.push(
-          [A[0],A[1],z0],[B[0],B[1],z0],[B[0],B[1],z1],
-          [A[0],A[1],z0],[B[0],B[1],z1],[A[0],A[1],z1]
-        );
-      }
-      extruded++;
-    }
-    if(extruded) log('Polilíneas extruidas: ' + extruded);
-  }
-
-  // Dar volumen a LINE (barras)
-  if(extrudeLines){
-    let count=0;
-    for(const seg of segments){
-      const A=seg[0], B=seg[1];
-      const w = lineWidth;
-      const d = depth;
-      const vx=B[0]-A[0], vy=B[1]-A[1];
-      const L=Math.hypot(vx,vy);
-      if(L<1e-9) continue;
-      const nx=-(vy/L)*(w/2), ny=(vx/L)*(w/2); // perpendicular en XY
-      const z0=A[2], z1=z0 + d; // usa z del segmento y extruye en +Z
-      // 4 esquinas base
-      const p0=[A[0]-nx, A[1]-ny, z0], p1=[A[0]+nx, A[1]+ny, z0];
-      const p2=[B[0]+nx, B[1]+ny, z0], p3=[B[0]-nx, B[1]-ny, z0];
-      // 4 esquinas top
-      const q0=[A[0]-nx, A[1]-ny, z1], q1=[A[0]+nx, A[1]+ny, z1];
-      const q2=[B[0]+nx, B[1]+ny, z1], q3=[B[0]-nx, B[1]-ny, z1];
-      // caras (12 triángulos)
-      // bottom
-      triangles.push(p0,p2,p1, p0,p3,p2);
-      // top
-      triangles.push(q0,q1,q2, q0,q2,q3);
-      // lados
-      triangles.push(p0,p1,q1, p0,q1,q0); // A side
-      triangles.push(p1,p2,q2, p1,q2,q1); // long side
-      triangles.push(p2,p3,q3, p2,q3,q2); // B side
-      triangles.push(p3,p0,q0, p3,q0,q3); // long side 2
-      count++;
-    }
-    if(count) log('LINE extruidas: ' + count);
-  }
-
-  return {triangles, segments, scaleApplied: scale};
-}
-
-// —————— triangulación polígono (ear clipping simple, 2D XY) ——————
-function triangulatePolygon2D(vs){
-  // Ensure CCW
-  const n = vs.length;
-  if(n < 3) return [];
-  const verts = vs.map(v => [v[0], v[1]]);
-  if (signedArea(verts) < 0) verts.reverse();
-
-  const V = Array.from({length:n}, (_,i)=>i);
-  const result = [];
-  let guard = 0;
-  while (V.length > 3 && guard++ < 10000){
-    let earFound = false;
-    for(let i=0;i<V.length;i++){
-      const i0 = V[(i+V.length-1)%V.length];
-      const i1 = V[i];
-      const i2 = V[(i+1)%V.length];
-      const a = verts[i0], b = verts[i1], c = verts[i2];
-      if (!isConvex(a,b,c)) continue;
-      // check if any other point inside triangle
-      let contains = false;
-      for (let j=0;j<V.length;j++){
-        const vi = V[j];
-        if (vi===i0||vi===i1||vi===i2) continue;
-        if (pointInTri(verts[vi], a,b,c)){ contains = true; break; }
-      }
-      if (contains) continue;
-      // ear!
-      result.push([i0,i1,i2]);
-      V.splice(i,1);
-      earFound = true;
-      break;
-    }
-    if(!earFound) break; // fallback
-  }
-  if (V.length === 3) result.push([V[0],V[1],V[2]]);
-  return result;
-}
-function signedArea(vs){
-  let a=0;
-  for(let i=0;i<vs.length;i++){
-    const j=(i+1)%vs.length;
-    a += vs[i][0]*vs[j][1] - vs[j][0]*vs[i][1];
-  }
-  return a/2;
-}
-function isConvex(a,b,c){
-  const cross = (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0]);
-  return cross > 0; // CCW
-}
-function pointInTri(p, a,b,c){
-  // barycentric
-  const v0=[c[0]-a[0], c[1]-a[1]];
-  const v1=[b[0]-a[0], b[1]-a[1]];
-  const v2=[p[0]-a[0], p[1]-a[1]];
-  const den = v0[0]*v1[1] - v1[0]*v0[1];
-  if (Math.abs(den) < 1e-12) return false;
-  const u = (v2[0]*v1[1] - v1[0]*v2[1]) / den;
-  const v = (v0[0]*v2[1] - v2[0]*v0[1]) / den;
-  return (u>=0 && v>=0 && (u+v)<=1);
-}
-
-// —————— GLB builder (igual que antes) ——————
-function buildGLB(triangles, segments){
-  // Weld vertices for triangles
-  let triVerts = [];
-  let triIdx = [];
-  if(triangles && triangles.length){
-    const map = new Map();
-    function key(v){ return (Math.round(v[0]*1e6)/1e6)+','+(Math.round(v[1]*1e6)/1e6)+','+(Math.round(v[2]*1e6)/1e6); }
-    for(let k=0;k<triangles.length;k+=3){
-      const A=triangles[k], B=triangles[k+1], C=triangles[k+2];
-      for(const v of [A,B,C]){
-        const kk = key(v);
-        if(!map.has(kk)){ map.set(kk, triVerts.length/3); triVerts.push(v[0],v[1],v[2]); }
-      }
-      triIdx.push(map.get(key(A)), map.get(key(B)), map.get(key(C)));
-    }
-    centerArrayInPlace(triVerts);
-  }
-
-  // Lines
-  let lineVerts = [];
-  let lineIdx = [];
-  if(segments && segments.length){
-    for(const [a,b] of segments){
-      lineVerts.push(a[0],a[1],a[2], b[0],b[1],b[2]);
-    }
-    centerArrayInPlace(lineVerts);
-    for(let i=0;i<lineVerts.length/3;i++){ lineIdx.push(i); }
-  }
-
-  if(!triVerts.length && !lineVerts.length){
-    throw new Error('No se detectó geometría (3DFACE / LINES).');
-  }
-
-  const triPosBin = float32ToArrayBuffer(triVerts);
-  const triIdxBin = uint32ToArrayBuffer(triIdx);
-  const linePosBin= float32ToArrayBuffer(lineVerts);
-  const lineIdxBin= uint32ToArrayBuffer(lineIdx);
-  const binBlob   = concatBuffers([triPosBin, triIdxBin, linePosBin, lineIdxBin]);
-
-  const bufferViews = [];
-  const accessors = [];
-  const meshes = [];
-  const materials = [
-    {"name":"DefaultMat","pbrMetallicRoughness":{"baseColorFactor":[0.8,0.82,0.85,1.0],"metallicFactor":0.0,"roughnessFactor":0.9},"doubleSided":true},
-    {"name":"LineBlack","pbrMetallicRoughness":{"baseColorFactor":[0,0,0,1.0],"metallicFactor":0.0,"roughnessFactor":1.0},"doubleSided":true}
-  ];
-
-  let offset = 0;
-  function addView(len, target){
-    const view = {"buffer":0,"byteOffset":offset,"byteLength":len,"target":target};
-    bufferViews.push(view);
-    offset += len;
-    return bufferViews.length-1;
-  }
-  function addAcc(view, compType, count, type, minv, maxv, byteOffset=0){
-    const acc = {"bufferView":view,"byteOffset":byteOffset,"componentType":compType,"count":count,"type":type};
-    if(minv) acc.min = minv;
-    if(maxv) acc.max = maxv;
-    accessors.push(acc);
-    return accessors.length-1;
-  }
-
-  const meshNodes = [];
-  if(triVerts.length && triIdx.length){
-    const vp = addView(triPosBin.byteLength, 34962);
-    const vi = addView(triIdxBin.byteLength, 34963);
-    const xs = pickEvery(triVerts,0), ys = pickEvery(triVerts,1), zs = pickEvery(triVerts,2);
-    const apos = addAcc(vp, 5126, triVerts.length/3, "VEC3", [min(xs),min(ys),min(zs)], [max(xs),max(ys),max(zs)]);
-    const aidx = addAcc(vi, 5125, triIdx.length, "SCALAR", null, null);
-    meshes.push({"primitives":[{"attributes":{"POSITION":apos},"indices":aidx,"mode":4,"material":0}]});
-    meshNodes.push(meshes.length-1);
-  }
-  if(lineVerts.length && lineIdx.length){
-    const vp = addView(linePosBin.byteLength, 34962);
-    const vi = addView(lineIdxBin.byteLength, 34963);
-    const xs = pickEvery(lineVerts,0), ys = pickEvery(lineVerts,1), zs = pickEvery(lineVerts,2);
-    const apos = addAcc(vp, 5126, lineVerts.length/3, "VEC3", [min(xs),min(ys),min(zs)], [max(xs),max(ys),max(zs)]);
-    const aidx = addAcc(vi, 5125, lineIdx.length, "SCALAR", null, null);
-    meshes.push({"primitives":[{"attributes":{"POSITION":apos},"indices":aidx,"mode":1,"material":1}]});
-    meshNodes.push(meshes.length-1);
-  }
-
-  const gltf = {
-    "asset":{"version":"2.0","generator":"dxf2glb_extrude_viewer"},
-    "buffers":[{"byteLength": binBlob.byteLength }],
-    "bufferViews": bufferViews,
-    "accessors": accessors,
-    "materials": materials.slice(0, meshNodes.length>1 ? 2 : 1),
-    "meshes": meshes,
-    "nodes": meshNodes.map((i)=>({"mesh":i,"name":"DXF_"+i})),
-    "scenes":[{"nodes": meshNodes.map((_,i)=>i)}],
-    "scene": 0
-  };
-
-  const jsonBytes = new TextEncoder().encode(JSON.stringify(gltf));
-  const jsonPadded = pad4(jsonBytes);
-  const binPadded = pad4(new Uint8Array(binBlob));
-  const totalLen = 12 + 8 + jsonPadded.byteLength + 8 + binPadded.byteLength;
-
-  const glb = new ArrayBuffer(totalLen);
-  const dv = new DataView(glb);
-  let o = 0;
-  dv.setUint32(o, 0x46546C67, true); o+=4; // 'glTF'
-  dv.setUint32(o, 2, true); o+=4;        // version
-  dv.setUint32(o, totalLen, true); o+=4; // length
-  dv.setUint32(o, jsonPadded.byteLength, true); o+=4;
-  dv.setUint8(o++, 0x4A); dv.setUint8(o++, 0x53); dv.setUint8(o++, 0x4F); dv.setUint8(o++, 0x4E); // 'JSON'
-  new Uint8Array(glb, o, jsonPadded.byteLength).set(jsonPadded); o += jsonPadded.byteLength;
-  dv.setUint32(o, binPadded.byteLength, true); o+=4;
-  dv.setUint8(o++, 0x42); dv.setUint8(o++, 0x49); dv.setUint8(o++, 0x4E); dv.setUint8(o++, 0x00); // 'BIN\0'
-  new Uint8Array(glb, o, binPadded.byteLength).set(binPadded); o += binPadded.byteLength;
-
-  return new Blob([glb], {type:'model/gltf-binary'});
-}
-
-// ---------- helpers ----------
-function centerArrayInPlace(arr){
-  if(!arr.length) return;
-  const xs = pickEvery(arr,0), ys = pickEvery(arr,1), zs = pickEvery(arr,2);
-  const cx=(min(xs)+max(xs))/2, cy=(min(ys)+max(ys))/2, cz=(min(zs)+max(zs))/2;
-  for(let i=0;i<arr.length;i+=3){ arr[i]-=cx; arr[i+1]-=cy; arr[i+2]-=cz; }
-}
-function pickEvery(arr, start){ const out=[]; for(let i=start;i<arr.length;i+=3) out.push(arr[i]); return out; }
-function min(a){ let m=Infinity; for(const v of a) if(v<m) m=v; return m; }
-function max(a){ let m=-Infinity; for(const v of a) if(v>m) m=v; return m; }
-
-function float32ToArrayBuffer(nums){ const f = new Float32Array(nums.length); f.set(nums); return f.buffer; }
-function uint32ToArrayBuffer(nums){ const u = new Uint32Array(nums.length); u.set(nums); return u.buffer; }
-function concatBuffers(arr){ let total=0; for(const b of arr) total += b.byteLength; const out = new Uint8Array(total); let o=0; for(const b of arr){ out.set(new Uint8Array(b), o); o+=b.byteLength; } return out.buffer; }
-function pad4(u8){ const pad = (4 - (u8.byteLength % 4)) % 4; if(pad===0) return u8; const out = new Uint8Array(u8.byteLength + pad); out.set(u8,0); for(let i=u8.byteLength;i<out.byteLength;i++) out[i]=0x20; return out; }
-
-function download(blob, filename){
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
-}
-</script>
+<div id="asideBackdrop" class="aside-backdrop" hidden></div>
 </body>
 </html>
